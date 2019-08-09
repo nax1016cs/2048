@@ -92,8 +92,10 @@ public:
 
 protected:
 	virtual void init_weights(const std::string& info) {
-		net.emplace_back(tile_per_tuple); // create an empty weight table with size 65536
-		net.emplace_back(tile_per_tuple); // create an empty weight table with size 65536
+		net.emplace_back(65536); // create an empty weight table with size 65536
+		net.emplace_back(65536); // create an empty weight table with size 65536
+		net.emplace_back(65536);
+		net.emplace_back(65536);
 		// now net.size() == 2; net[0].size() == 65536; net[1].size() == 65536
 	}
 	virtual void load_weights(const std::string& path) {
