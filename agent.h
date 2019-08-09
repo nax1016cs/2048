@@ -1,12 +1,3 @@
-/**
- * Framework for 2048 & 2048-like Games (C++ 11)
- * use 'g++ -std=c++11 -O3 -g -o 2048 2048.cpp' to compile the source
- *
- * Author: Hung Guei (moporgic)
- *         Computer Games and Intelligence (CGI) Lab, NCTU, Taiwan
- *         http://www.aigames.nctu.edu.tw
- */
-
 #pragma once
 #include <string>
 #include <random>
@@ -19,6 +10,24 @@
 #include "weight.h"
 #include <fstream>
 
+const int tuple_num = 4;
+const long long tile_per_tuple = 16 * 16 * 16 * 16 * 16 * 16;
+//the location index of the n-tuple
+const std::array<std::array<int, 6> ,tuple_num> tuple_feature = {{
+		{{0,4,8,12,13,9}},
+
+		{{1,5,9,13,14,10}},
+		
+		{{1,2,5,6,9,10}},
+
+		{{2,3,6,7,10,11}}
+	}};
+ // index:
+ //  0  1  2  3
+ //  4  5  6  7
+ //  8  9 10 11
+ // 12 13 14 15
+
 class agent {
 public:
 	agent(const std::string& args = "") {
@@ -30,7 +39,8 @@ public:
 		}
 	}
 	virtual ~agent() {}
-	virtual void open_episode(const std::string& flag = "") {}
+	virtual void open_episode(const std::string& flag = "") {
+	}
 	virtual void close_episode(const std::string& flag = "") {}
 	virtual action take_action(const board& b) { return action(); }
 	virtual bool check_for_win(const board& b) { return false; }
@@ -52,9 +62,6 @@ protected:
 	std::map<key, value> meta;
 };
 
-/**
- * base agent for agents with randomness
- */
 class random_agent : public agent {
 public:
 	random_agent(const std::string& args = "") : agent(args) {
@@ -73,20 +80,21 @@ protected:
 class weight_agent : public agent {
 public:
 	weight_agent(const std::string& args = "") : agent(args) {
-		if (meta.find("init") != meta.end())
+		if (meta.find("init") != meta.end()) // pass init=... to initialize the weight
 			init_weights(meta["init"]);
-		if (meta.find("load") != meta.end())
+		if (meta.find("load") != meta.end()) // pass load=... to load from a specific file
 			load_weights(meta["load"]);
 	}
 	virtual ~weight_agent() {
-		if (meta.find("save") != meta.end())
+		if (meta.find("save") != meta.end()) // pass save=... to save to a specific file
 			save_weights(meta["save"]);
 	}
 
 protected:
 	virtual void init_weights(const std::string& info) {
-//		net.emplace_back(65536); // create an empty weight table with size 65536
-//		net.emplace_back(65536); // create an empty weight table with size 65536
+		net.emplace_back(tile_per_tuple); // create an empty weight table with size 65536
+		net.emplace_back(tile_per_tuple); // create an empty weight table with size 65536
+		// now net.size() == 2; net[0].size() == 65536; net[1].size() == 65536
 	}
 	virtual void load_weights(const std::string& path) {
 		std::ifstream in(path, std::ios::in | std::ios::binary);
@@ -120,7 +128,8 @@ public:
 			alpha = float(meta["alpha"]);
 	}
 	virtual ~learning_agent() {}
-
+	float get_alpha(){return alpha;};
+	friend class player;
 protected:
 	float alpha;
 };
@@ -152,23 +161,147 @@ private:
 };
 
 /**
- * dummy player
- * select a legal action randomly
+ * td player
+ * select the op s.t. max(reward + V(S'))
  */
-class player : public random_agent {
+class player : public weight_agent {
 public:
-	player(const std::string& args = "") : random_agent("name=dummy role=player " + args),
-		opcode({ 0, 1, 2, 3 }) {}
-
+	player(const std::string& args = "") : weight_agent("name=dummy role=player " + args),
+		opcode({ 0, 1, 2, 3 }) {
+			for(int i = 0; i<tuple_num ; i++) 
+				net.emplace_back(tile_per_tuple);
+		}
+	virtual void open_episode(const std::string& flag = "" ) {
+			count = 0;
+		}
 	virtual action take_action(const board& before) {
-		std::shuffle(opcode.begin(), opcode.end(), engine);
+		/*std::shuffle(opcode.begin(), opcode.end(), engine);
 		for (int op : opcode) {
 			board::reward reward = board(before).slide(op);
 			if (reward != -1) return action::slide(op);
 		}
+		return action();*/
+		t_tuple_feature = tuple_feature;
+		board t = before;
+		int next_op = select_op(t);
+		int reward = t.slide(next_op);
+		//train the weight if there are two board
+		if(next_op != -1){
+			if(count==0){
+				previous = t;
+				count++;
+			}
+			else if(count==1){
+				next = t;
+				train_weight(previous,next,reward,0);
+				count++;
+			}
+			else{
+				previous = next;
+				next = t;
+				if(reward==-1){
+					train_weight(next,next,0,1);
+				}
+				else{
+					train_weight(previous,next,reward,0);
+				}
+			}
+			return action::slide(next_op);
+		}
 		return action();
 	}
-
+public:	
+	double board_value(const board& b){
+		double value = 0;
+		for(int i=0; i<tuple_num; i++){
+			for(int l=0; l<4; l++){
+				rotate_right();	
+				for(int m=0; m<2; m++){
+					value += net[i][caculate_tuple_value(b,i)];
+					reflection();	
+				}
+			}
+		}
+		return value;
+	}
+	unsigned int caculate_tuple_value(const board& b, int index_of_tuple){
+		unsigned int tuple_value = 0;
+		int order = 1;
+		for(int j=0; j<6; j++){
+			tuple_value += order * b[t_tuple_feature[index_of_tuple][j]/4][t_tuple_feature[index_of_tuple][j]%4];
+			order = order <<4;
+		}
+		return tuple_value;
+	}
+	//op = {0 1 2 3}
+	short select_op(const board& before){
+		float max_value = -2147483648;
+		board temp;
+		short best_op = -1;
+		for (int op = 0; op < 4; op ++) {
+			temp = before;
+			int reward = temp.slide(op);
+			if(reward!=-1){
+				if(reward + board_value(temp) > max_value){
+					best_op = op;
+					max_value = reward + board_value(temp);
+				}
+			}
+		}
+		return best_op;
+	}
+	void train_weight(const board& previous, const board& next, int reward, int last){
+		double rate = 0.1/(tuple_num * 8);
+		double v_s ;
+		v_s = last ? rate * (-board_value(previous)) : rate * (board_value(next) - board_value(previous) + reward);
+		for(int i=0; i<tuple_num; i++){
+			for(int l=0; l<4; l++){
+				rotate_right();
+				for(int m=0; m<4; m++){
+					net[i][caculate_tuple_value(previous,i)]+= v_s;	
+					reflection();
+				}
+			}
+		}
+	}
+	void reflection(){
+		for(int i=0; i<4; i++){
+			for(int j=0; j<6; j++){
+				if(t_tuple_feature[i][j] % 4 == 0) t_tuple_feature[i][j] = t_tuple_feature[i][j] + 3;
+				else if(t_tuple_feature[i][j] % 4 == 1) t_tuple_feature[i][j] = t_tuple_feature[i][j] + 1;
+				else if(t_tuple_feature[i][j] % 4 == 2) t_tuple_feature[i][j] = t_tuple_feature[i][j] - 1;
+				else if(t_tuple_feature[i][j] % 4 == 3) t_tuple_feature[i][j] = t_tuple_feature[i][j] - 3;
+			}
+		}
+	}
+	void rotate_right(){
+		for(int i=0; i<4; i++){
+			for(int j=0; j<6; j++){
+				if(t_tuple_feature[i][j] == 0) t_tuple_feature[i][j] = 3;//+3
+				else if(t_tuple_feature[i][j] == 1) t_tuple_feature[i][j] = 7;//+6
+				else if(t_tuple_feature[i][j] == 2) t_tuple_feature[i][j] = 11;//+9
+				else if(t_tuple_feature[i][j] == 3) t_tuple_feature[i][j] = 15;//+12
+				else if(t_tuple_feature[i][j] == 4) t_tuple_feature[i][j] = 2;//-2
+				else if(t_tuple_feature[i][j] == 5) t_tuple_feature[i][j] = 6;//+1
+				else if(t_tuple_feature[i][j] == 6) t_tuple_feature[i][j] = 10;//+4
+				else if(t_tuple_feature[i][j] == 7) t_tuple_feature[i][j] = 14;//+7
+				else if(t_tuple_feature[i][j] == 8) t_tuple_feature[i][j] = 1;//-7
+				else if(t_tuple_feature[i][j] == 9) t_tuple_feature[i][j] = 5;//-4
+				else if(t_tuple_feature[i][j] == 10) t_tuple_feature[i][j] = 9;//-1
+				else if(t_tuple_feature[i][j] == 11) t_tuple_feature[i][j] = 13;//+2
+				else if(t_tuple_feature[i][j] == 12) t_tuple_feature[i][j] = 0;//-12
+				else if(t_tuple_feature[i][j] == 13) t_tuple_feature[i][j] = 4;//-9
+				else if(t_tuple_feature[i][j] == 14) t_tuple_feature[i][j] = 8;//-6
+				else if(t_tuple_feature[i][j] == 15) t_tuple_feature[i][j] = 12;//-3
+			}
+		}
+	}
 private:
 	std::array<int, 4> opcode;
+	std::array<std::array<int, 6> ,tuple_num> t_tuple_feature ;
+	short int count = 0;
+	board previous, next;	
 };
+
+
+
