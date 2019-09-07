@@ -3,6 +3,7 @@
 #include <random>
 #include <sstream>
 #include <map>
+#include <math.h>
 #include <type_traits>
 #include <algorithm>
 #include "board.h"
@@ -11,7 +12,9 @@
 #include <fstream>
 
 const int tuple_num = 4;
-const long long tile_per_tuple = 16 * 16 * 16 * 16 * 16 * 16;
+const long long tile_per_tuple = 16 * 16 * 16 * 16 * 16 * 16 * 16;
+const int rt[16] = {3,7,11,15,2,6,10,14,1,5,9,13,0,4,8,12};
+const int rf[16] = {3,2,1,0,7,6,5,4,11,10,9,8,15,14,13,12};
 //the location index of the n-tuple
 const std::array<std::array<int, 6> ,tuple_num> tuple_feature = {{
 		{{0,4,8,12,13,9}},
@@ -177,12 +180,12 @@ public:
 			count = 0;
 		}
 	virtual action take_action(const board& before) {
-		/*std::shuffle(opcode.begin(), opcode.end(), engine);
-		for (int op : opcode) {
-			board::reward reward = board(before).slide(op);
-			if (reward != -1) return action::slide(op);
-		}
-		return action();*/
+		// std::shuffle(opcode.begin(), opcode.end(), engine);
+		// for (int op : opcode) {
+		// 	board::reward reward = board(before).slide(op);
+		// 	if (reward != -1) return action::slide(op);
+		// }
+		// return action();
 		t_tuple_feature = tuple_feature;
 		board t = before;
 		int next_op = select_op(t);
@@ -253,9 +256,13 @@ public:
 		return best_op;
 	}
 	void train_weight(const board& previous, const board& next, int reward, int last){
-		double rate = 0.1/(tuple_num * 8);
-		double v_s ;
-		v_s = last ? rate * (-board_value(previous)) : rate * (board_value(next) - board_value(previous) + reward);
+		//double rate = 0.1/(tuple_num * 8);
+		double td_error = board_value(next) - board_value(previous) + reward;
+		td += td_error;
+		abs_td += abs(td_error);	
+		double rate = (abs_td==0) ? 0.1 : td*1.0/abs_td *0.1 ;
+		rate = (rate>0) ? rate : rate * (-1);
+		double v_s = last ? rate * (-board_value(previous)) : rate * td_error;
 		for(int i=0; i<tuple_num; i++){
 			for(int l=0; l<4; l++){
 				rotate_right();
@@ -269,32 +276,14 @@ public:
 	void reflection(){
 		for(int i=0; i<4; i++){
 			for(int j=0; j<6; j++){
-				if(t_tuple_feature[i][j] % 4 == 0) t_tuple_feature[i][j] = t_tuple_feature[i][j] + 3;
-				else if(t_tuple_feature[i][j] % 4 == 1) t_tuple_feature[i][j] = t_tuple_feature[i][j] + 1;
-				else if(t_tuple_feature[i][j] % 4 == 2) t_tuple_feature[i][j] = t_tuple_feature[i][j] - 1;
-				else if(t_tuple_feature[i][j] % 4 == 3) t_tuple_feature[i][j] = t_tuple_feature[i][j] - 3;
+				t_tuple_feature[i][j] = rf[t_tuple_feature[i][j]];
 			}
 		}
 	}
 	void rotate_right(){
 		for(int i=0; i<4; i++){
 			for(int j=0; j<6; j++){
-				if(t_tuple_feature[i][j] == 0) t_tuple_feature[i][j] = 3;//+3
-				else if(t_tuple_feature[i][j] == 1) t_tuple_feature[i][j] = 7;//+6
-				else if(t_tuple_feature[i][j] == 2) t_tuple_feature[i][j] = 11;//+9
-				else if(t_tuple_feature[i][j] == 3) t_tuple_feature[i][j] = 15;//+12
-				else if(t_tuple_feature[i][j] == 4) t_tuple_feature[i][j] = 2;//-2
-				else if(t_tuple_feature[i][j] == 5) t_tuple_feature[i][j] = 6;//+1
-				else if(t_tuple_feature[i][j] == 6) t_tuple_feature[i][j] = 10;//+4
-				else if(t_tuple_feature[i][j] == 7) t_tuple_feature[i][j] = 14;//+7
-				else if(t_tuple_feature[i][j] == 8) t_tuple_feature[i][j] = 1;//-7
-				else if(t_tuple_feature[i][j] == 9) t_tuple_feature[i][j] = 5;//-4
-				else if(t_tuple_feature[i][j] == 10) t_tuple_feature[i][j] = 9;//-1
-				else if(t_tuple_feature[i][j] == 11) t_tuple_feature[i][j] = 13;//+2
-				else if(t_tuple_feature[i][j] == 12) t_tuple_feature[i][j] = 0;//-12
-				else if(t_tuple_feature[i][j] == 13) t_tuple_feature[i][j] = 4;//-9
-				else if(t_tuple_feature[i][j] == 14) t_tuple_feature[i][j] = 8;//-6
-				else if(t_tuple_feature[i][j] == 15) t_tuple_feature[i][j] = 12;//-3
+				t_tuple_feature[i][j] = rt[t_tuple_feature[i][j]];
 			}
 		}
 	}
@@ -302,6 +291,8 @@ private:
 	std::array<int, 4> opcode;
 	std::array<std::array<int, 6> ,tuple_num> t_tuple_feature ;
 	short int count = 0;
+	long long int abs_td = 0;
+	long long int td = 0;
 	board previous, next;	
 };
 
