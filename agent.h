@@ -257,12 +257,12 @@ public:
 	}
 	void train_weight(const board& previous, const board& next, int reward, int last){
 		//double rate = 0.1/(tuple_num * 8);
-		double td_error = board_value(next) - board_value(previous) + reward;
+		double td_error = board_value(next) - board_value(previous) ;
 		td += td_error;
 		abs_td += abs(td_error);	
 		double rate = (abs_td==0) ? 0.1 : td*1.0/abs_td *0.1 ;
 		rate = (rate>0) ? rate : rate * (-1);
-		double v_s = last ? rate * (-board_value(previous)) : rate * td_error;
+		double v_s = last ? rate * (-board_value(previous)) : rate * (td_error + reward);
 		for(int i=0; i<tuple_num; i++){
 			for(int l=0; l<4; l++){
 				rotate_right();
