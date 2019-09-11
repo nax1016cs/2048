@@ -16,6 +16,7 @@ const int tuple_num = 4;
 const long long tile_per_tuple = 16 * 16 * 16 * 16 * 16 * 16 * 16;
 const int rt[16] = {3,7,11,15,2,6,10,14,1,5,9,13,0,4,8,12};
 const int rf[16] = {3,2,1,0,7,6,5,4,11,10,9,8,15,14,13,12};
+const int step = 10;
 //the location index of the n-tuple
 const std::array<std::array<int, 6> ,tuple_num> tuple_feature = {{
 		{{0,4,8,12,13,9}},
@@ -193,31 +194,39 @@ public:
 		int reward = t.slide(next_op);
 		//train the weight if there are two board
 		if(next_op != -1){
-			if(count==0){
+			if(count < step){
 				// previous = t;
-				record[0] = std::make_pair(t,reward);
+				record[count] = std::make_pair(t,reward);
 				count++;
 			}
-			else if(count==1){
-				// mid = t;
-				//train_weight(previous,next,reward,0);
-				record[1] = std::make_pair(t,reward);
-				count++;
-			}
-			else if(count==2){
+			else if(count == step){
 				// next = t;
 				//train_weight(previous,next,reward,0);
-				record[2] = std::make_pair(t,reward);
+				record[count] = std::make_pair(t,reward);
 				train_weight(record,0);
 				count++;
 			}
 			else{
-				for(int i=0; i<2; i++){
+				for(int i=0; i<step; i++){
 					record[i].first = record[i+1].first;
 					record[i].second = record[i+1].second;
 				}
-				record[2].first = t;
-				record[2].second = reward;
+				record[step].first = t;
+				record[step].second = reward;
+				// printf("before:\n");
+				// for(int i=0; i<4; i++){
+				// 	for(int j=0; j<4; j++){
+				// 		printf(" %d ", record[0].first[i][j]);
+				// 	}
+				// 	printf("\n");
+				// }
+				// printf("after:\n");
+				// for(int i=0; i<4; i++){
+				// 	for(int j=0; j<4; j++){
+				// 		printf(" %d ", record[1].first[i][j]);
+				// 	}
+				// 	printf("\n");
+				// }
 				if(reward==-1){
 					// train_weight(next,next,0,1);
 					train_weight(record,1);
@@ -289,9 +298,15 @@ public:
 	// 		}
 	// 	}
 	// }
-	void train_weight(const std::array<std::pair<board , board::reward> ,3 > ,int last){
+	void train_weight(const std::array<std::pair<board , board::reward> ,step+1 > ,int last){
 		double rate = 0.1/(tuple_num * 8);
-		double gt = record[0].second + record[1].second*0.8 + board_value(record[2].first)*0.8*0.8 -board_value(record[0].first);
+		double gt = 0;
+		double gama = 1.0;
+		for(int i=0; i<step; i++){
+			gt += record[i+1].second * gama;
+			gama*=0.05;
+		}
+		gt = gt + gama*board_value(record[step].first) - board_value(record[0].first) ;
 		double v_s = last ? 0 :  rate *gt	;
 		for(int i=0; i<tuple_num; i++){
 			for(int l=0; l<4; l++){
@@ -324,7 +339,7 @@ private:
 	long long int abs_td = 0;
 	long long int td = 0;
 	// board previous, next;
-	std::array<std::pair<board , int> ,3 > record;	
+	std::array<std::pair<board , int> , step+1 > record;	
 };
 
 
