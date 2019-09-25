@@ -16,7 +16,7 @@ const int tuple_num = 4;
 const long long tile_per_tuple = 16 * 16 * 16 * 16 * 16 * 16 * 16;
 const int rt[16] = {3,7,11,15,2,6,10,14,1,5,9,13,0,4,8,12};
 const int rf[16] = {3,2,1,0,7,6,5,4,11,10,9,8,15,14,13,12};
-const int step = 10;
+const int step = 3;
 //the location index of the n-tuple
 const std::array<std::array<int, 6> ,tuple_num> tuple_feature = {{
 		{{0,4,8,12,13,9}},
@@ -192,16 +192,12 @@ public:
 		board t = before;
 		int next_op = select_op(t);
 		int reward = t.slide(next_op);
-		//train the weight if there are two board
 		if(next_op != -1){
 			if(count < step){
-				// previous = t;
 				record[count] = std::make_pair(t,reward);
 				count++;
 			}
 			else if(count == step){
-				// next = t;
-				//train_weight(previous,next,reward,0);
 				record[count] = std::make_pair(t,reward);
 				train_weight(record,0);
 				count++;
@@ -213,26 +209,10 @@ public:
 				}
 				record[step].first = t;
 				record[step].second = reward;
-				// printf("before:\n");
-				// for(int i=0; i<4; i++){
-				// 	for(int j=0; j<4; j++){
-				// 		printf(" %d ", record[0].first[i][j]);
-				// 	}
-				// 	printf("\n");
-				// }
-				// printf("after:\n");
-				// for(int i=0; i<4; i++){
-				// 	for(int j=0; j<4; j++){
-				// 		printf(" %d ", record[1].first[i][j]);
-				// 	}
-				// 	printf("\n");
-				// }
 				if(reward==-1){
-					// train_weight(next,next,0,1);
 					train_weight(record,1);
 				}
 				else{
-					// train_weight(previous,next,reward,0);
 					train_weight(record,0);
 				}
 			}
@@ -263,7 +243,6 @@ public:
 		}
 		return tuple_value;
 	}
-	//op = {0 1 2 3}
 	short select_op(const board& before){
 		float max_value = -2147483648;
 		board temp;
@@ -280,34 +259,16 @@ public:
 		}
 		return best_op;
 	}
-	// void train_weight(const board& previous, const board& next, int reward, int last){
-	// 	//double rate = 0.1/(tuple_num * 8);
-	// 	double td_error = board_value(next) - board_value(previous) ;
-	// 	td += td_error;
-	// 	abs_td += abs(td_error);	
-	// 	double rate = (abs_td==0) ? 0.1 : td*1.0/abs_td *0.1 ;
-	// 	rate = (rate>0) ? rate : rate * (-1);
-	// 	double v_s = last ? rate * (-board_value(previous)) : rate * (td_error + reward);
-	// 	for(int i=0; i<tuple_num; i++){
-	// 		for(int l=0; l<4; l++){
-	// 			rotate_right();
-	// 			for(int m=0; m<4; m++){
-	// 				net[i][caculate_tuple_value(previous,i)]+= v_s;	
-	// 				reflection();
-	// 			}s
-	// 		}
-	// 	}
-	// }
 	void train_weight(const std::array<std::pair<board , board::reward> ,step+1 > ,int last){
 		double rate = 0.1/(tuple_num * 8);
 		double gt = 0;
 		double gama = 1.0;
 		for(int i=0; i<step; i++){
-			gt += record[i+1].second * gama;
-			gama*=0.05;
+			gt = gt + record[i+1].second * gama;
+			gama*=0.9;
 		}
-		gt = gt + gama*board_value(record[step].first) - board_value(record[0].first) ;
-		double v_s = last ? 0 :  rate *gt	;
+		double delta = gt + gama*(board_value(record[step].first) - board_value(record[0].first) );
+		double v_s = last ? 0 :  rate *delta;
 		for(int i=0; i<tuple_num; i++){
 			for(int l=0; l<4; l++){
 				rotate_right();
