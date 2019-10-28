@@ -3,7 +3,6 @@
 #include <random>
 #include <sstream>
 #include <map>
-#include <math.h>
 #include <type_traits>
 #include <algorithm>
 #include "board.h"
@@ -218,13 +217,14 @@ public:
 public:	
 	double board_value(const board& b){
 		double value = 0;
-		for(int i=0; i<tuple_num; i++){
-			for(int l=0; l<4; l++){
-				rotate_right();	
-				for(int m=0; m<2; m++){
-					value += net[i][caculate_tuple_value(b,i)];
-					reflection();	
-				}
+		for(int l=0; l<4; l++){
+			rotate_right();	
+			for(int m=0; m<2; m++){
+				value += net[0][caculate_tuple_value(b,0)];
+				value += net[1][caculate_tuple_value(b,1)];
+				value += net[2][caculate_tuple_value(b,2)];
+				value += net[3][caculate_tuple_value(b,3)];
+				reflection();	
 			}
 		}
 		return value;
@@ -256,20 +256,17 @@ public:
 		return best_op;
 	}
 	void train_weight(const board& previous, const board& next, int reward, int last){
-		//double rate = 0.1/(tuple_num * 8);
-		double td_error = board_value(next) - board_value(previous) + reward;
-		td += td_error;
-		abs_td += abs(td_error);	
-		double rate = (abs_td==0) ? 0.1 : td*1.0/abs_td *0.1 ;
-		rate = (rate>0) ? rate : rate * (-1);
-		double v_s = last ? 0 : rate * td_error;
-		for(int i=0; i<tuple_num; i++){
-			for(int l=0; l<4; l++){
-				rotate_right();
-				for(int m=0; m<4; m++){
-					net[i][caculate_tuple_value(previous,i)]+= v_s;	
-					reflection();
-				}
+		double rate = 0.1/(tuple_num * 8);
+		double v_s ;
+		v_s = last ? 0 : rate * (board_value(next) - board_value(previous) + reward);
+		for(int l=0; l<4; l++){
+			rotate_right();
+			for(int m=0; m<4; m++){
+				net[0][caculate_tuple_value(previous,0)]+= v_s;	
+				net[1][caculate_tuple_value(previous,1)]+= v_s;	
+				net[2][caculate_tuple_value(previous,2)]+= v_s;	
+				net[3][caculate_tuple_value(previous,3)]+= v_s;	
+				reflection();
 			}
 		}
 	}
@@ -291,8 +288,6 @@ private:
 	std::array<int, 4> opcode;
 	std::array<std::array<int, 6> ,tuple_num> t_tuple_feature ;
 	short int count = 0;
-	long long int abs_td = 0;
-	long long int td = 0;
 	board previous, next;	
 };
 
